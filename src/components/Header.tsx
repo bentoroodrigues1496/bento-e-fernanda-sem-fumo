@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { Share2, Settings } from 'lucide-react';
-import { useAppContext } from '@/context/AppContext';
+import { Share2 } from 'lucide-react';
+import Settings from './Settings';
 
 const Header: React.FC = () => {
   const handleShare = () => {
@@ -20,22 +20,17 @@ const Header: React.FC = () => {
   };
 
   return (
-    <div className="flex justify-between items-center mb-6">
-      <h1 className="text-2xl font-bold text-primary">Sem Fumar</h1>
+    <div className="flex justify-between items-center mb-6 p-2 backdrop-blur-sm rounded-2xl bg-white/30 shadow-sm">
+      <h1 className="text-2xl font-bold text-primary pl-2 text-gradient">Sem Fumar</h1>
       <div className="flex gap-2">
         <button 
           onClick={handleShare} 
-          className="p-2 rounded-full hover:bg-gray-100"
+          className="p-2 rounded-full hover:bg-mint/30 transition-colors"
           aria-label="Compartilhar"
         >
-          <Share2 size={20} />
+          <Share2 size={20} className="text-primary" />
         </button>
-        <button 
-          className="p-2 rounded-full hover:bg-gray-100"
-          aria-label="Configurações"
-        >
-          <Settings size={20} />
-        </button>
+        <Settings />
       </div>
     </div>
   );
