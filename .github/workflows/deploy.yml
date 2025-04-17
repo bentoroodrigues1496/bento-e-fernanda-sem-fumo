@@ -41,10 +41,13 @@ jobs:
         run: |
           cp -r public/* dist/ || true
           
-      - name: Create .nojekyll file
+      - name: Setup dist directory for GitHub Pages
         run: |
           touch dist/.nojekyll
-          echo "application/javascript" > dist/.mime.types
+          cp .mime.types dist/.mime.types
+          echo "application/javascript js mjs" > dist/_headers
+          find dist -name "*.js" -type f -exec sh -c 'echo "{}: Content-Type: application/javascript" >> dist/_headers' \;
+          find dist -name "*.mjs" -type f -exec sh -c 'echo "{}: Content-Type: application/javascript" >> dist/_headers' \;
           
       - name: Setup Pages
         uses: actions/configure-pages@v4

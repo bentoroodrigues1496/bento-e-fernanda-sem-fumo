@@ -1,17 +1,24 @@
 
-# Configurando os MIME types corretamente para o GitHub Pages
+# Definir tipos MIME explícitos para JavaScript
 *.js linguist-language=JavaScript text=auto eol=lf
 *.jsx linguist-language=JavaScript text=auto eol=lf
 *.ts linguist-language=JavaScript text=auto eol=lf
 *.tsx linguist-language=JavaScript text=auto eol=lf
+*.mjs linguist-language=JavaScript text=auto eol=lf
+*.cjs linguist-language=JavaScript text=auto eol=lf
 *.json linguist-language=JSON text=auto eol=lf
 *.html linguist-language=HTML text=auto eol=lf
 *.css linguist-language=CSS text=auto eol=lf
 *.svg linguist-language=SVG text=auto eol=lf
 
-# Definir MIME types explicitamente
-*.js binary
-*.mjs binary
+# Forçar tipos MIME corretos para GitHub Pages
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
 
-# Garantir MIME types para arquivos web
+# Ignorar arquivos do git export
 .gitattributes export-ignore
+.gitignore export-ignore
