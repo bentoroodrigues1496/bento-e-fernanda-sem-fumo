@@ -9,6 +9,7 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+// Usando HashRouter para compatibilidade com GitHub Pages
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
