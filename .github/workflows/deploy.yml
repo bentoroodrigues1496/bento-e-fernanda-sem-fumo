@@ -42,8 +42,10 @@ jobs:
           cp -r public/* dist/ || true
           
       - name: Create .nojekyll file
-        run: touch dist/.nojekyll
-        
+        run: |
+          touch dist/.nojekyll
+          echo "application/javascript" > dist/.mime.types
+          
       - name: Setup Pages
         uses: actions/configure-pages@v4
         
