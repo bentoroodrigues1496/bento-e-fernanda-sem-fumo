@@ -1,0 +1,13 @@
+
+# Configurando os MIME types corretamente para o GitHub Pages
+*.js linguist-language=JavaScript
+*.jsx linguist-language=JavaScript
+*.ts linguist-language=JavaScript
+*.tsx linguist-language=JavaScript
+*.json linguist-language=JSON
+*.html linguist-language=HTML
+*.css linguist-language=CSS
+*.svg linguist-language=SVG
+
+# Garante que os arquivos de texto sejam normalizados para LF
+* text=auto eol=lf

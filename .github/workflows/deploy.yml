@@ -40,6 +40,9 @@ jobs:
       - name: Copy public assets
         run: |
           cp -r public/* dist/ || true
+          
+      - name: Create .nojekyll file
+        run: touch dist/.nojekyll
         
       - name: Setup Pages
         uses: actions/configure-pages@v4
