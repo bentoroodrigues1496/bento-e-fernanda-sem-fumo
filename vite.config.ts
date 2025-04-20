@@ -9,10 +9,7 @@ export default defineConfig(({ mode }) => ({
   base: './',
   server: {
     host: "::",
-    port: 8080,
-    headers: {
-      "Content-Type": "text/javascript; charset=utf-8"
-    }
+    port: 8080
   },
   plugins: [
     react(),

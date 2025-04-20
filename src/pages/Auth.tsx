@@ -12,6 +12,7 @@ const Auth: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [authError, setAuthError] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -28,6 +29,7 @@ const Auth: React.FC = () => {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError('');
     
     if (!email || !password) {
       toast({
@@ -42,17 +44,28 @@ const Auth: React.FC = () => {
       setLoading(true);
       
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
         });
         
         if (error) throw error;
         
-        toast({
-          title: "Conta criada com sucesso!",
-          description: "Por favor, verifique seu e-mail para confirmar seu cadastro.",
-        });
+        if (data && data.user) {
+          if (data.user.identities?.length === 0) {
+            setAuthError('Este email já está cadastrado. Tente fazer login.');
+            toast({
+              title: "Usuário já existe",
+              description: "Este email já está cadastrado. Tente fazer login.",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Conta criada com sucesso!",
+              description: "Por favor, verifique seu e-mail para confirmar seu cadastro.",
+            });
+          }
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -64,11 +77,13 @@ const Auth: React.FC = () => {
         navigate('/');
       }
     } catch (error: any) {
+      setAuthError(error.message);
       toast({
         title: "Erro de autenticação",
         description: error.message,
         variant: "destructive",
       });
+      console.error("Erro de autenticação:", error);
     } finally {
       setLoading(false);
     }
@@ -106,6 +121,12 @@ const Auth: React.FC = () => {
               disabled={loading}
             />
           </div>
+          
+          {authError && (
+            <div className="text-red-500 text-sm bg-red-50 p-2 rounded border border-red-200">
+              {authError}
+            </div>
+          )}
           
           <Button
             type="submit"

@@ -8,7 +8,6 @@
     <meta name="description" content="Aplicativo para acompanhar o desafio sem fumar de Bento e Fernanda" />
     <meta name="author" content="Bento e Fernanda" />
 
-    <!-- Movendo o favicon para a pasta public -->
     <link rel="icon" href="./favicon.ico" />
     
     <meta property="og:title" content="Sem Fumar - Bento e Fernanda" />
@@ -18,16 +17,12 @@
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="./favicon.ico" />
-    
-    <!-- Removendo o tipo MIME que pode estar causando problemas -->
-    <!-- <meta http-equiv="Content-Type" content="text/javascript; charset=utf-8" /> -->
   </head>
 
   <body>
     <div id="root"></div>
     <!-- IMPORTANT: DO NOT REMOVE THIS SCRIPT TAG OR THIS VERY COMMENT! -->
     <script src="https://cdn.gpteng.co/gptengineer.js" type="module"></script>
-    <!-- Alterando para nomodule para evitar problemas de MIME type -->
-    <script type="text/javascript" src="./src/main.tsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
