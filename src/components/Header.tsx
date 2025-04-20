@@ -1,9 +1,12 @@
 
 import React from 'react';
-import { Share2 } from 'lucide-react';
+import { Share2, LogOut } from 'lucide-react';
 import Settings from './Settings';
+import { useAuth } from '@/context/AuthContext';
 
 const Header: React.FC = () => {
+  const { signOut } = useAuth();
+  
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
@@ -31,6 +34,13 @@ const Header: React.FC = () => {
           <Share2 size={20} className="text-primary" />
         </button>
         <Settings />
+        <button 
+          onClick={signOut}
+          className="p-2 rounded-full hover:bg-red-100 transition-colors"
+          aria-label="Sair"
+        >
+          <LogOut size={20} className="text-red-500" />
+        </button>
       </div>
     </div>
   );

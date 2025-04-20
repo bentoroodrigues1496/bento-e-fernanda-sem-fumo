@@ -1,8 +1,11 @@
+
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppData, CheckIn, UserType } from "@/lib/types";
-import { formatISO, parseISO, startOfDay, isSameDay, format, addDays, differenceInDays, startOfWeek } from "date-fns";
+import { formatISO, parseISO, startOfDay, isSameDay, addDays, differenceInDays, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useAuth } from "./AuthContext";
+import { toast } from "sonner";
 
 // Chave para o localStorage
 const LOCAL_STORAGE_KEY = "sem-fumar-data";
@@ -30,29 +33,87 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [data, setData] = useState<AppData>(initialData);
-  const [session, setSession] = useState(null);
+  const { session, user } = useAuth();
 
-  // Fetch initial data from Supabase on component mount
+  // Buscar dados iniciais do Supabase quando o componente for montado
   useEffect(() => {
     const fetchInitialData = async () => {
-      // TODO: Implement user-specific data fetching
-      // This will require authentication to be set up
+      if (!user) return;
+      
+      try {
+        // Buscar os check-ins do usuário
+        const { data: checkInsData, error: checkInsError } = await supabase
+          .from('daily_checks')
+          .select('*')
+          .order('date', { ascending: false });
+        
+        if (checkInsError) throw checkInsError;
+        
+        // Transformar os dados do Supabase para o formato do app
+        const transformedCheckIns: CheckIn[] = checkInsData.map(item => ({
+          date: item.date,
+          bento: item.bento || false,
+          fernanda: item.fernanda || false,
+          valueBento: item.valueBento || data.dailyValueBento,
+          valueFernanda: item.valueFernanda || data.dailyValueFernanda
+        }));
+        
+        setData(prevData => ({
+          ...prevData,
+          checkIns: transformedCheckIns
+        }));
+        
+      } catch (error) {
+        console.error('Erro ao buscar dados:', error);
+        toast.error('Erro ao carregar dados');
+      }
     };
 
-    // Set up real-time listener for changes
+    fetchInitialData();
+    
+    // Configurar listener para mudanças em tempo real
     const channel = supabase
-      .channel('app-data-changes')
+      .channel('daily-checks-changes')
       .on(
         'postgres_changes',
         { 
           event: '*', 
           schema: 'public', 
-          table: 'daily_checks' 
+          table: 'daily_checks',
+          filter: user ? `user_id=eq.${user.id}` : undefined
         },
-        (payload) => {
-          // Handle real-time updates
-          console.log('Real-time update:', payload);
-          // Update local state based on payload
+        async (payload) => {
+          console.log('Atualização em tempo real:', payload);
+          
+          // Atualizar o estado local com base na mudança
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const newItem = payload.new as any;
+            
+            // Buscar todos os dados atualizados para manter a sincronização
+            const { data: checkInsData, error: checkInsError } = await supabase
+              .from('daily_checks')
+              .select('*')
+              .order('date', { ascending: false });
+              
+            if (checkInsError) {
+              console.error('Erro ao buscar dados atualizados:', checkInsError);
+              return;
+            }
+            
+            // Transformar os dados do Supabase para o formato do app
+            const transformedCheckIns: CheckIn[] = checkInsData.map(item => ({
+              date: item.date,
+              bento: item.bento || false,
+              fernanda: item.fernanda || false,
+              valueBento: item.valueBento || data.dailyValueBento,
+              valueFernanda: item.valueFernanda || data.dailyValueFernanda
+            }));
+            
+            setData(prevData => ({
+              ...prevData,
+              checkIns: transformedCheckIns
+            }));
+          }
         }
       )
       .subscribe();
@@ -60,74 +121,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user]);
 
-  // Update check-in method to save to Supabase
+  // Atualizar check-in e salvar no Supabase
   const updateCheckIn = async (user: UserType) => {
+    if (!session) {
+      toast.error('Você precisa estar logado para fazer check-in');
+      return;
+    }
+    
     const today = startOfDay(new Date());
     const todayISO = formatISO(today);
 
     try {
-      // Insert or update check-in in Supabase
-      const { data: checkInData, error } = await supabase
+      // Verificar se já existe um check-in para hoje
+      const existingCheckInIndex = data.checkIns.findIndex(
+        checkIn => isSameDay(parseISO(checkIn.date), today)
+      );
+      
+      const updatedCheckIns = [...data.checkIns];
+      let newCheckInValue = true;
+      
+      // Se já existe, alternar o valor
+      if (existingCheckInIndex >= 0) {
+        newCheckInValue = !updatedCheckIns[existingCheckInIndex][user];
+        updatedCheckIns[existingCheckInIndex] = {
+          ...updatedCheckIns[existingCheckInIndex],
+          [user]: newCheckInValue
+        };
+      } else {
+        // Se não existe, criar um novo
+        updatedCheckIns.unshift({
+          date: todayISO,
+          bento: user === 'bento',
+          fernanda: user === 'fernanda',
+          valueBento: user === 'bento' ? data.dailyValueBento : 0,
+          valueFernanda: user === 'fernanda' ? data.dailyValueFernanda : 0
+        });
+      }
+      
+      // Atualizar estado local otimisticamente
+      setData(prevData => ({
+        ...prevData,
+        checkIns: updatedCheckIns
+      }));
+      
+      // Salvar no Supabase
+      const { error } = await supabase
         .from('daily_checks')
         .upsert({
           date: todayISO,
-          user_id: session?.user?.id, // Require authentication
-          [user]: true,
+          user_id: user?.id,
+          [user]: newCheckInValue,
           [`value${user.charAt(0).toUpperCase() + user.slice(1)}`]: 
             data[`dailyValue${user.charAt(0).toUpperCase() + user.slice(1)}`]
-        })
-        .select();
-
+        });
+      
       if (error) throw error;
-
-      // Update local state optimistically
-      setData(prevData => {
-        const updatedCheckIns = [...prevData.checkIns];
-        const existingCheckInIndex = updatedCheckIns.findIndex(
-          checkIn => isSameDay(parseISO(checkIn.date), today)
-        );
-
-        if (existingCheckInIndex >= 0) {
-          updatedCheckIns[existingCheckInIndex] = {
-            ...updatedCheckIns[existingCheckInIndex],
-            [user]: !updatedCheckIns[existingCheckInIndex][user]
-          };
-        } else {
-          updatedCheckIns.push({
-            date: todayISO,
-            bento: user === 'bento',
-            fernanda: user === 'fernanda',
-            valueBento: user === 'bento' ? prevData.dailyValueBento : 0,
-            valueFernanda: user === 'fernanda' ? prevData.dailyValueFernanda : 0
-          });
-        }
-
-        return {
-          ...prevData,
-          checkIns: updatedCheckIns
-        };
-      });
+      
     } catch (error) {
-      console.error('Error updating check-in:', error);
+      console.error('Erro ao atualizar check-in:', error);
+      toast.error('Erro ao salvar check-in');
+      
+      // Reverter alteração local em caso de erro
+      const { data: checkInsData } = await supabase
+        .from('daily_checks')
+        .select('*')
+        .order('date', { ascending: false });
+      
+      if (checkInsData) {
+        const transformedCheckIns: CheckIn[] = checkInsData.map(item => ({
+          date: item.date,
+          bento: item.bento || false,
+          fernanda: item.fernanda || false,
+          valueBento: item.valueBento || data.dailyValueBento,
+          valueFernanda: item.valueFernanda || data.dailyValueFernanda
+        }));
+        
+        setData(prevData => ({
+          ...prevData,
+          checkIns: transformedCheckIns
+        }));
+      }
     }
   };
 
-  // Update daily value method to save to Supabase
-  const updateDailyValue = async (user: UserType, value: number) => {
+  // Atualizar valor diário
+  const updateDailyValue = async (userType: UserType, value: number) => {
     try {
-      // TODO: Implement updating daily value in Supabase
       setData(prevData => ({
         ...prevData,
-        [`dailyValue${user.charAt(0).toUpperCase() + user.slice(1)}`]: value
+        [`dailyValue${userType.charAt(0).toUpperCase() + userType.slice(1)}`]: value
       }));
+      
+      // TODO: Implementar atualização do valor diário no Supabase
     } catch (error) {
-      console.error('Error updating daily value:', error);
+      console.error('Erro ao atualizar valor diário:', error);
+      toast.error('Erro ao atualizar valor');
     }
   };
 
-  // Dias consecutivos sem fumar (ambos marcados)
+  // Calcular o check-in de hoje
+  const calculateTodayCheckIn = (): CheckIn | null => {
+    const today = startOfDay(new Date());
+    const todayCheckIn = data.checkIns.find(checkIn => 
+      isSameDay(parseISO(checkIn.date), today)
+    );
+    return todayCheckIn || null;
+  };
+
+  // Calcular dias consecutivos sem fumar (ambos marcados)
   const calculateConsecutiveDays = (): number => {
     const sortedCheckIns = [...data.checkIns]
       .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
@@ -203,6 +306,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { monthlyProjection, yearlyProjection };
   };
   
+  const todayCheckIn = calculateTodayCheckIn();
   const { monthlyProjection, yearlyProjection } = calculateProjections();
   const consecutiveDays = calculateConsecutiveDays();
   const totalSaved = calculateTotalSaved();
@@ -213,7 +317,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider
       value={{
         data,
-        todayCheckIn: null, // TODO: Implement todayCheckIn from Supabase data
+        todayCheckIn,
         updateCheckIn,
         updateDailyValue,
         consecutiveDays,
