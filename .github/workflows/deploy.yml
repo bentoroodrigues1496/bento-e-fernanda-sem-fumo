@@ -46,6 +46,7 @@ jobs:
           touch dist/.nojekyll
           cp .mime.types dist/.mime.types
           echo "application/javascript js mjs" > dist/_headers
+          echo "text/javascript js mjs" >> dist/_headers
           find dist -name "*.js" -type f -exec sh -c 'echo "{}: Content-Type: application/javascript" >> dist/_headers' \;
           find dist -name "*.mjs" -type f -exec sh -c 'echo "{}: Content-Type: application/javascript" >> dist/_headers' \;
           
