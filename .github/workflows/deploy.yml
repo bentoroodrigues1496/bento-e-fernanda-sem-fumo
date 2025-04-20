@@ -45,10 +45,12 @@ jobs:
         run: |
           touch dist/.nojekyll
           cp .mime.types dist/.mime.types
-          echo "application/javascript js mjs" > dist/_headers
-          echo "text/javascript js mjs" >> dist/_headers
-          find dist -name "*.js" -type f -exec sh -c 'echo "{}: Content-Type: application/javascript" >> dist/_headers' \;
-          find dist -name "*.mjs" -type f -exec sh -c 'echo "{}: Content-Type: application/javascript" >> dist/_headers' \;
+          echo "application/javascript js" > dist/_headers
+          echo "text/javascript js" >> dist/_headers
+          echo "module application/javascript mjs" >> dist/_headers
+          echo "module text/javascript mjs" >> dist/_headers
+          find dist -name "*.js" -type f -exec sh -c 'echo "{}: Content-Type: text/javascript" >> dist/_headers' \;
+          find dist -name "*.mjs" -type f -exec sh -c 'echo "{}: Content-Type: module/javascript" >> dist/_headers' \;
           
       - name: Setup Pages
         uses: actions/configure-pages@v4
