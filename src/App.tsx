@@ -9,6 +9,7 @@ import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
+import { AppProvider } from "./context/AppContext";
 import React from 'react';
 
 const App = () => {
@@ -28,7 +29,9 @@ const App = () => {
                 path="/" 
                 element={
                   <ProtectedRoute>
-                    <Index />
+                    <AppProvider>
+                      <Index />
+                    </AppProvider>
                   </ProtectedRoute>
                 } 
               />

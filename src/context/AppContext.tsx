@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { AppData, CheckIn, UserType } from "@/lib/types";
+import { AppData, CheckIn, UserType, DailyCheckRecord } from "@/lib/types";
 import { formatISO, parseISO, startOfDay, isSameDay, addDays, differenceInDays, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "./AuthContext";
@@ -35,6 +35,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [data, setData] = useState<AppData>(initialData);
   const { session, user } = useAuth();
 
+  // Transform Supabase records to our app data format
+  const transformDailyChecks = (records: DailyCheckRecord[]): CheckIn[] => {
+    // Group records by date
+    const recordsByDate: Record<string, DailyCheckRecord[]> = {};
+    records.forEach(record => {
+      if (!recordsByDate[record.date]) {
+        recordsByDate[record.date] = [];
+      }
+      recordsByDate[record.date].push(record);
+    });
+    
+    // Transform grouped records into CheckIn format
+    return Object.entries(recordsByDate).map(([date, dateRecords]) => {
+      // Default check-in with both users unchecked
+      const checkIn: CheckIn = {
+        date,
+        bento: false,
+        fernanda: false,
+        valueBento: data.dailyValueBento,
+        valueFernanda: data.dailyValueFernanda
+      };
+      
+      // Check if we have records with "completed" set to true
+      dateRecords.forEach(record => {
+        // For now, we'll assume "bento" is the first user and "fernanda" is the second
+        // In the future, this should be based on user_id matching specific users
+        if (record.completed) {
+          const userType = record.user_id.toLowerCase().includes('bento') ? 'bento' : 'fernanda';
+          checkIn[userType] = true;
+          checkIn[`value${userType.charAt(0).toUpperCase() + userType.slice(1)}`] = record.amount;
+        }
+      });
+      
+      return checkIn;
+    });
+  };
+
   // Buscar dados iniciais do Supabase quando o componente for montado
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -49,14 +86,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         if (checkInsError) throw checkInsError;
         
-        // Transformar os dados do Supabase para o formato do app
-        const transformedCheckIns: CheckIn[] = checkInsData.map(item => ({
-          date: item.date,
-          bento: item.bento || false,
-          fernanda: item.fernanda || false,
-          valueBento: item.valueBento || data.dailyValueBento,
-          valueFernanda: item.valueFernanda || data.dailyValueFernanda
-        }));
+        // Transform the data from Supabase to our app format
+        const transformedCheckIns = transformDailyChecks(checkInsData);
         
         setData(prevData => ({
           ...prevData,
@@ -87,7 +118,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           
           // Atualizar o estado local com base na mudança
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const newItem = payload.new as any;
             
             // Buscar todos os dados atualizados para manter a sincronização
             const { data: checkInsData, error: checkInsError } = await supabase
@@ -100,14 +130,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               return;
             }
             
-            // Transformar os dados do Supabase para o formato do app
-            const transformedCheckIns: CheckIn[] = checkInsData.map(item => ({
-              date: item.date,
-              bento: item.bento || false,
-              fernanda: item.fernanda || false,
-              valueBento: item.valueBento || data.dailyValueBento,
-              valueFernanda: item.valueFernanda || data.dailyValueFernanda
-            }));
+            // Transform the data to our app format
+            const transformedCheckIns = transformDailyChecks(checkInsData);
             
             setData(prevData => ({
               ...prevData,
@@ -124,8 +148,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [user]);
 
   // Atualizar check-in e salvar no Supabase
-  const updateCheckIn = async (user: UserType) => {
-    if (!session) {
+  const updateCheckIn = async (userType: UserType) => {
+    if (!session || !user) {
       toast.error('Você precisa estar logado para fazer check-in');
       return;
     }
@@ -144,19 +168,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       // Se já existe, alternar o valor
       if (existingCheckInIndex >= 0) {
-        newCheckInValue = !updatedCheckIns[existingCheckInIndex][user];
+        newCheckInValue = !updatedCheckIns[existingCheckInIndex][userType];
         updatedCheckIns[existingCheckInIndex] = {
           ...updatedCheckIns[existingCheckInIndex],
-          [user]: newCheckInValue
+          [userType]: newCheckInValue
         };
       } else {
         // Se não existe, criar um novo
         updatedCheckIns.unshift({
           date: todayISO,
-          bento: user === 'bento',
-          fernanda: user === 'fernanda',
-          valueBento: user === 'bento' ? data.dailyValueBento : 0,
-          valueFernanda: user === 'fernanda' ? data.dailyValueFernanda : 0
+          bento: userType === 'bento',
+          fernanda: userType === 'fernanda',
+          valueBento: userType === 'bento' ? data.dailyValueBento : 0,
+          valueFernanda: userType === 'fernanda' ? data.dailyValueFernanda : 0
         });
       }
       
@@ -166,15 +190,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         checkIns: updatedCheckIns
       }));
       
+      // Get the amount value for the current user type
+      const amount = data[`dailyValue${userType.charAt(0).toUpperCase() + userType.slice(1)}`];
+      
       // Salvar no Supabase
       const { error } = await supabase
         .from('daily_checks')
         .upsert({
           date: todayISO,
-          user_id: user?.id,
-          [user]: newCheckInValue,
-          [`value${user.charAt(0).toUpperCase() + user.slice(1)}`]: 
-            data[`dailyValue${user.charAt(0).toUpperCase() + user.slice(1)}`]
+          user_id: user.id,
+          completed: newCheckInValue,
+          amount
         });
       
       if (error) throw error;
@@ -190,13 +216,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .order('date', { ascending: false });
       
       if (checkInsData) {
-        const transformedCheckIns: CheckIn[] = checkInsData.map(item => ({
-          date: item.date,
-          bento: item.bento || false,
-          fernanda: item.fernanda || false,
-          valueBento: item.valueBento || data.dailyValueBento,
-          valueFernanda: item.valueFernanda || data.dailyValueFernanda
-        }));
+        const transformedCheckIns = transformDailyChecks(checkInsData);
         
         setData(prevData => ({
           ...prevData,
