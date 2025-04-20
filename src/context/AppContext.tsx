@@ -1,13 +1,12 @@
-
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { AppData, CheckIn, UserType } from "@/lib/types";
-import { formatISO, parseISO, startOfDay, format, addDays, isSameDay, differenceInDays, startOfWeek } from "date-fns";
+import { formatISO, parseISO, startOfDay, isSameDay, format, addDays, differenceInDays, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 // Chave para o localStorage
 const LOCAL_STORAGE_KEY = "sem-fumar-data";
 
-// Valores iniciais
 const initialData: AppData = {
   checkIns: [],
   dailyValueBento: 20.00,
@@ -31,50 +30,103 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [data, setData] = useState<AppData>(initialData);
-  
-  // Carregar dados do localStorage na inicialização
+  const [session, setSession] = useState(null);
+
+  // Fetch initial data from Supabase on component mount
   useEffect(() => {
-    const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (savedData) {
-      try {
-        setData(JSON.parse(savedData));
-      } catch (e) {
-        console.error("Erro ao carregar dados:", e);
-      }
-    }
-    
-    // Configurar intervalo para verificar atualizações a cada 30 segundos
-    const intervalId = setInterval(() => {
-      const latestData = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (latestData) {
-        try {
-          const parsedData = JSON.parse(latestData);
-          // Só atualiza se os dados forem diferentes
-          if (JSON.stringify(parsedData) !== JSON.stringify(data)) {
-            setData(parsedData);
-          }
-        } catch (e) {
-          console.error("Erro ao sincronizar dados:", e);
+    const fetchInitialData = async () => {
+      // TODO: Implement user-specific data fetching
+      // This will require authentication to be set up
+    };
+
+    // Set up real-time listener for changes
+    const channel = supabase
+      .channel('app-data-changes')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'daily_checks' 
+        },
+        (payload) => {
+          // Handle real-time updates
+          console.log('Real-time update:', payload);
+          // Update local state based on payload
         }
-      }
-    }, 30000);
-    
-    return () => clearInterval(intervalId);
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
-  
-  // Salvar dados para o localStorage sempre que houver mudanças
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-  }, [data]);
-  
-  // Obter check-in de hoje ou criar um novo se não existir
-  const todayDate = startOfDay(new Date());
-  const todayISODate = formatISO(todayDate);
-  
-  const todayCheckIn = data.checkIns.find(checkIn => 
-    isSameDay(parseISO(checkIn.date), todayDate)
-  ) || null;
-  
+
+  // Update check-in method to save to Supabase
+  const updateCheckIn = async (user: UserType) => {
+    const today = startOfDay(new Date());
+    const todayISO = formatISO(today);
+
+    try {
+      // Insert or update check-in in Supabase
+      const { data: checkInData, error } = await supabase
+        .from('daily_checks')
+        .upsert({
+          date: todayISO,
+          user_id: session?.user?.id, // Require authentication
+          [user]: true,
+          [`value${user.charAt(0).toUpperCase() + user.slice(1)}`]: 
+            data[`dailyValue${user.charAt(0).toUpperCase() + user.slice(1)}`]
+        })
+        .select();
+
+      if (error) throw error;
+
+      // Update local state optimistically
+      setData(prevData => {
+        const updatedCheckIns = [...prevData.checkIns];
+        const existingCheckInIndex = updatedCheckIns.findIndex(
+          checkIn => isSameDay(parseISO(checkIn.date), today)
+        );
+
+        if (existingCheckInIndex >= 0) {
+          updatedCheckIns[existingCheckInIndex] = {
+            ...updatedCheckIns[existingCheckInIndex],
+            [user]: !updatedCheckIns[existingCheckInIndex][user]
+          };
+        } else {
+          updatedCheckIns.push({
+            date: todayISO,
+            bento: user === 'bento',
+            fernanda: user === 'fernanda',
+            valueBento: user === 'bento' ? prevData.dailyValueBento : 0,
+            valueFernanda: user === 'fernanda' ? prevData.dailyValueFernanda : 0
+          });
+        }
+
+        return {
+          ...prevData,
+          checkIns: updatedCheckIns
+        };
+      });
+    } catch (error) {
+      console.error('Error updating check-in:', error);
+    }
+  };
+
+  // Update daily value method to save to Supabase
+  const updateDailyValue = async (user: UserType, value: number) => {
+    try {
+      // TODO: Implement updating daily value in Supabase
+      setData(prevData => ({
+        ...prevData,
+        [`dailyValue${user.charAt(0).toUpperCase() + user.slice(1)}`]: value
+      }));
+    } catch (error) {
+      console.error('Error updating daily value:', error);
+    }
+  };
+
   // Dias consecutivos sem fumar (ambos marcados)
   const calculateConsecutiveDays = (): number => {
     const sortedCheckIns = [...data.checkIns]
@@ -142,52 +194,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
   
-  // Atualizar check-in
-  const updateCheckIn = (user: UserType) => {
-    const today = startOfDay(new Date());
-    const todayISO = formatISO(today);
-    
-    setData(prevData => {
-      // Verificar se já existe um check-in para hoje
-      const existingCheckInIndex = prevData.checkIns.findIndex(
-        checkIn => isSameDay(parseISO(checkIn.date), today)
-      );
-      
-      const updatedCheckIns = [...prevData.checkIns];
-      
-      if (existingCheckInIndex >= 0) {
-        // Atualizar check-in existente
-        updatedCheckIns[existingCheckInIndex] = {
-          ...updatedCheckIns[existingCheckInIndex],
-          [user]: !updatedCheckIns[existingCheckInIndex][user],
-          [`value${user.charAt(0).toUpperCase() + user.slice(1)}`]: prevData[`dailyValue${user.charAt(0).toUpperCase() + user.slice(1)}` as keyof AppData]
-        };
-      } else {
-        // Criar novo check-in
-        updatedCheckIns.push({
-          date: todayISO,
-          bento: user === 'bento',
-          fernanda: user === 'fernanda',
-          valueBento: user === 'bento' ? prevData.dailyValueBento : 0,
-          valueFernanda: user === 'fernanda' ? prevData.dailyValueFernanda : 0
-        });
-      }
-      
-      return {
-        ...prevData,
-        checkIns: updatedCheckIns
-      };
-    });
-  };
-  
-  // Atualizar valor diário
-  const updateDailyValue = (user: UserType, value: number) => {
-    setData(prevData => ({
-      ...prevData,
-      [`dailyValue${user.charAt(0).toUpperCase() + user.slice(1)}`]: value
-    }));
-  };
-  
   // Calcular projeções
   const calculateProjections = () => {
     const dailyTotal = data.dailyValueBento + data.dailyValueFernanda;
@@ -207,7 +213,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider
       value={{
         data,
-        todayCheckIn,
+        todayCheckIn: null, // TODO: Implement todayCheckIn from Supabase data
         updateCheckIn,
         updateDailyValue,
         consecutiveDays,
