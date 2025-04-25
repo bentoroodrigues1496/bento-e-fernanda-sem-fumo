@@ -9,7 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 
 const DailyCheckIn: React.FC = () => {
   const { updateCheckIn, data, todayCheckIn } = useAppContext();
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const today = new Date();
   
   const isUserBento = user?.email?.toLowerCase().includes('bento');
@@ -31,6 +31,7 @@ const DailyCheckIn: React.FC = () => {
               todayCheckIn?.bento ? 'bg-mint' : 'bg-gray-100'
             } ${!isUserBento ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={!isUserBento}
+            title={!isUserBento ? 'Apenas Bento pode marcar este check-in' : ''}
           >
             <Clock size={18} className={todayCheckIn?.bento ? 'text-mint-dark' : 'text-gray-400'} />
           </button>
@@ -45,6 +46,7 @@ const DailyCheckIn: React.FC = () => {
               todayCheckIn?.fernanda ? 'bg-blue-light' : 'bg-gray-100'
             } ${!isUserFernanda ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={!isUserFernanda}
+            title={!isUserFernanda ? 'Apenas Fernanda pode marcar este check-in' : ''}
           >
             <Clock size={18} className={todayCheckIn?.fernanda ? 'text-blue-dark' : 'text-gray-400'} />
           </button>

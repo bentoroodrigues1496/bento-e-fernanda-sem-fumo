@@ -7,13 +7,13 @@ import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
+import SetNameForm from "./components/SetNameForm";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { AppProvider } from "./context/AppContext";
 import React from 'react';
 
 const App = () => {
-  // Create a QueryClient instance inside the component
   const queryClient = new QueryClient();
   
   return (
@@ -25,6 +25,14 @@ const App = () => {
           <AuthProvider>
             <Routes>
               <Route path="/auth" element={<Auth />} />
+              <Route 
+                path="/set-name" 
+                element={
+                  <ProtectedRoute>
+                    <SetNameForm />
+                  </ProtectedRoute>
+                } 
+              />
               <Route 
                 path="/" 
                 element={

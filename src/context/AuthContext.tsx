@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Session, User } from '@supabase/supabase-js';
@@ -9,6 +8,7 @@ type AuthContextType = {
   session: Session | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  userProfile: { full_name: string | null } | null;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,6 +17,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<{ full_name: string | null } | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -38,21 +39,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // DEPOIS checar sessão atual
-    const getSession = async () => {
+    // DEPOIS checar sessão atual e buscar perfil
+    const getSessionAndProfile = async () => {
       try {
-        console.log("AuthProvider: buscando sessão");
-        const { data, error } = await supabase.auth.getSession();
+        console.log("AuthProvider: buscando sessão e perfil");
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         
-        if (error) {
-          console.error('Erro ao buscar sessão:', error);
+        if (sessionError) {
+          console.error('Erro ao buscar sessão:', sessionError);
           setLoading(false);
           return;
         }
         
-        console.log("AuthProvider: sessão encontrada", data.session?.user?.email);
-        setSession(data.session);
-        setUser(data.session?.user || null);
+        setSession(sessionData.session);
+        setUser(sessionData.session?.user || null);
+
+        if (sessionData.session?.user) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', sessionData.session.user.id)
+            .single();
+
+          setUserProfile(profileData);
+          
+          // Se o usuário está logado mas não tem nome definido, redireciona para definir
+          if (profileData && !profileData.full_name && window.location.pathname !== '/set-name') {
+            navigate('/set-name');
+          }
+        }
+        
         setLoading(false);
       } catch (error) {
         console.error('Erro inesperado:', error);
@@ -60,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
     
-    getSession();
+    getSessionAndProfile();
 
     return () => {
       console.log("AuthProvider: limpando listener");
@@ -79,7 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   console.log("AuthProvider: renderizando", { user: user?.email, loading });
 
   return (
-    <AuthContext.Provider value={{ user, session, signOut, loading }}>
+    <AuthContext.Provider value={{ user, session, signOut, loading, userProfile }}>
       {!loading && children}
     </AuthContext.Provider>
   );
