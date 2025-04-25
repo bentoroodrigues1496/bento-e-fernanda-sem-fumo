@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppData, CheckIn, UserType, DailyCheckRecord } from "@/lib/types";
@@ -39,11 +38,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const transformDailyChecks = (records: DailyCheckRecord[]): CheckIn[] => {
     // Group records by date
     const recordsByDate: Record<string, DailyCheckRecord[]> = {};
+    
     records.forEach(record => {
-      if (!recordsByDate[record.date]) {
-        recordsByDate[record.date] = [];
+      const dateKey = record.date;
+      if (!recordsByDate[dateKey]) {
+        recordsByDate[dateKey] = [];
       }
-      recordsByDate[record.date].push(record);
+      recordsByDate[dateKey].push(record);
     });
     
     // Transform grouped records into CheckIn format
@@ -57,14 +58,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         valueFernanda: data.dailyValueFernanda
       };
       
-      // Check if we have records with "completed" set to true
+      // Process each record for this date
       dateRecords.forEach(record => {
-        // For now, we'll assume "bento" is the first user and "fernanda" is the second
-        // In the future, this should be based on user_id matching specific users
+        // Determine which user the record belongs to based on user_id
+        // In a real app, you would likely have a way to determine which user is "bento" and which is "fernanda"
+        // For now, we'll use a more explicit flag in the record to indicate the user type
+        
         if (record.completed) {
-          const userType = record.user_id.toLowerCase().includes('bento') ? 'bento' : 'fernanda';
-          checkIn[userType] = true;
-          checkIn[`value${userType.charAt(0).toUpperCase() + userType.slice(1)}`] = record.amount;
+          // Check the user_id and determine if this is Bento or Fernanda
+          // This is the key part that was causing the issue
+          const recordEmail = record.user_id.toLowerCase();
+          
+          if (recordEmail.includes('bento')) {
+            checkIn.bento = true;
+            checkIn.valueBento = record.amount;
+          } else {
+            checkIn.fernanda = true;
+            checkIn.valueFernanda = record.amount;
+          }
         }
       });
       
@@ -78,6 +89,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!user) return;
       
       try {
+        console.log("Fetching initial data for user:", user.email);
+        
         // Buscar os check-ins do usuário
         const { data: checkInsData, error: checkInsError } = await supabase
           .from('daily_checks')
@@ -86,8 +99,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         if (checkInsError) throw checkInsError;
         
+        console.log("Fetched check-ins data:", checkInsData);
+        
         // Transform the data from Supabase to our app format
         const transformedCheckIns = transformDailyChecks(checkInsData);
+        
+        console.log("Transformed check-ins:", transformedCheckIns);
         
         setData(prevData => ({
           ...prevData,
@@ -110,8 +127,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         { 
           event: '*', 
           schema: 'public', 
-          table: 'daily_checks',
-          filter: user ? `user_id=eq.${user.id}` : undefined
+          table: 'daily_checks'
         },
         async (payload) => {
           console.log('Atualização em tempo real:', payload);
@@ -129,6 +145,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               console.error('Erro ao buscar dados atualizados:', checkInsError);
               return;
             }
+            
+            console.log("Dados atualizados recebidos:", checkInsData);
             
             // Transform the data to our app format
             const transformedCheckIns = transformDailyChecks(checkInsData);
@@ -154,44 +172,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     
+    // Determinar qual usuário está fazendo o check-in
+    const isUserBento = user.email?.toLowerCase().includes('bento');
+    const isUserFernanda = user.email?.toLowerCase().includes('fernanda');
+    
+    // Verificar se o usuário está tentando fazer check-in para o usuário correto
+    if ((userType === 'bento' && !isUserBento) || (userType === 'fernanda' && !isUserFernanda)) {
+      toast.error(`Você só pode marcar check-in como ${isUserBento ? 'Bento' : 'Fernanda'}`);
+      return;
+    }
+    
     const today = startOfDay(new Date());
     const todayISO = formatISO(today);
+    
+    console.log(`Atualizando check-in para ${userType}. User ID: ${user.id}, Email: ${user.email}`);
 
     try {
       // Verificar se já existe um check-in para hoje
-      const existingCheckInIndex = data.checkIns.findIndex(
-        checkIn => isSameDay(parseISO(checkIn.date), today)
-      );
+      const { data: existingCheck, error: checkError } = await supabase
+        .from('daily_checks')
+        .select('*')
+        .eq('date', todayISO)
+        .eq('user_id', user.id)
+        .single();
+        
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
       
-      const updatedCheckIns = [...data.checkIns];
       let newCheckInValue = true;
       
-      // Se já existe, alternar o valor
-      if (existingCheckInIndex >= 0) {
-        newCheckInValue = !updatedCheckIns[existingCheckInIndex][userType];
-        updatedCheckIns[existingCheckInIndex] = {
-          ...updatedCheckIns[existingCheckInIndex],
-          [userType]: newCheckInValue
-        };
+      // Se já existe um check-in para hoje, alternar o valor
+      if (existingCheck) {
+        newCheckInValue = !existingCheck.completed;
+        console.log(`Check existente encontrado. Alternando de ${existingCheck.completed} para ${newCheckInValue}`);
       } else {
-        // Se não existe, criar um novo
-        updatedCheckIns.unshift({
-          date: todayISO,
-          bento: userType === 'bento',
-          fernanda: userType === 'fernanda',
-          valueBento: userType === 'bento' ? data.dailyValueBento : 0,
-          valueFernanda: userType === 'fernanda' ? data.dailyValueFernanda : 0
-        });
+        console.log('Nenhum check existente para hoje. Criando novo check-in.');
       }
       
       // Atualizar estado local otimisticamente
-      setData(prevData => ({
-        ...prevData,
-        checkIns: updatedCheckIns
-      }));
+      setData(prevData => {
+        const existingCheckInIndex = prevData.checkIns.findIndex(
+          checkIn => isSameDay(parseISO(checkIn.date), today)
+        );
+        
+        const updatedCheckIns = [...prevData.checkIns];
+        
+        if (existingCheckInIndex >= 0) {
+          updatedCheckIns[existingCheckInIndex] = {
+            ...updatedCheckIns[existingCheckInIndex],
+            [userType]: newCheckInValue
+          };
+        } else {
+          updatedCheckIns.unshift({
+            date: todayISO,
+            bento: userType === 'bento' ? true : false,
+            fernanda: userType === 'fernanda' ? true : false,
+            valueBento: userType === 'bento' ? prevData.dailyValueBento : 0,
+            valueFernanda: userType === 'fernanda' ? prevData.dailyValueFernanda : 0
+          });
+        }
+        
+        return {
+          ...prevData,
+          checkIns: updatedCheckIns
+        };
+      });
       
       // Get the amount value for the current user type
       const amount = data[`dailyValue${userType.charAt(0).toUpperCase() + userType.slice(1)}`];
+      
+      console.log(`Salvando no Supabase. UserID: ${user.id}, Completed: ${newCheckInValue}, Amount: ${amount}`);
       
       // Salvar no Supabase
       const { error } = await supabase
@@ -204,6 +255,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       
       if (error) throw error;
+      
+      console.log('Check-in atualizado com sucesso');
       
     } catch (error) {
       console.error('Erro ao atualizar check-in:', error);

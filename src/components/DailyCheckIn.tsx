@@ -5,10 +5,15 @@ import { ptBR } from 'date-fns/locale';
 import { Clock } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import { formatCurrency } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 const DailyCheckIn: React.FC = () => {
   const { updateCheckIn, data, todayCheckIn } = useAppContext();
+  const { user } = useAuth();
   const today = new Date();
+  
+  const isUserBento = user?.email?.toLowerCase().includes('bento');
+  const isUserFernanda = user?.email?.toLowerCase().includes('fernanda');
   
   return (
     <div className="p-4 mb-4 rounded-lg border border-gray-200">
@@ -24,7 +29,8 @@ const DailyCheckIn: React.FC = () => {
             onClick={() => updateCheckIn('bento')}
             className={`w-10 h-10 rounded-full flex items-center justify-center ${
               todayCheckIn?.bento ? 'bg-mint' : 'bg-gray-100'
-            }`}
+            } ${!isUserBento ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!isUserBento}
           >
             <Clock size={18} className={todayCheckIn?.bento ? 'text-mint-dark' : 'text-gray-400'} />
           </button>
@@ -37,7 +43,8 @@ const DailyCheckIn: React.FC = () => {
             onClick={() => updateCheckIn('fernanda')}
             className={`w-10 h-10 rounded-full flex items-center justify-center ${
               todayCheckIn?.fernanda ? 'bg-blue-light' : 'bg-gray-100'
-            }`}
+            } ${!isUserFernanda ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!isUserFernanda}
           >
             <Clock size={18} className={todayCheckIn?.fernanda ? 'text-blue-dark' : 'text-gray-400'} />
           </button>
