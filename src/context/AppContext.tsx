@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppData, CheckIn, UserType, DailyCheckRecord } from "@/lib/types";
-import { formatISO, parseISO, startOfDay, isSameDay, addDays, differenceInDays, startOfWeek } from "date-fns";
+import { formatISO, parseISO, startOfDay, isSameDay, addDays, differenceInDays, startOfWeek, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "./AuthContext";
 import { toast } from "sonner";
